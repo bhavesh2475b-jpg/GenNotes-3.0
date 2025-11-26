@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Toolbar from './components/Toolbar';
 import Header from './components/Header';
@@ -377,7 +376,7 @@ const App: React.FC = () => {
 
   if (currentView === 'HOME') {
       return (
-          <>
+          <div className="h-screen w-screen overflow-hidden bg-[#121212]">
             <Home 
                 notebooks={notebooks} 
                 onOpenNotebook={handleOpenNotebook}
@@ -389,7 +388,7 @@ const App: React.FC = () => {
                     onCreate={handleCreateNotebook}
                 />
             )}
-          </>
+          </div>
       );
   }
 

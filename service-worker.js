@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'gennotes-v1';
+const CACHE_NAME = 'gennotes-v2';
 const urlsToCache = [
   '/',
   '/index.html',

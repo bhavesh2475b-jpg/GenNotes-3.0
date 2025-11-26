@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Notebook, NotebookType } from '../types';
-import { AddIcon, MenuIcon, SearchIcon, NoteIcon, BoardIcon, DocumentIcon } from './Icons';
+import { AddIcon, MenuIcon, SearchIcon, NoteIcon, BoardIcon, DocumentIcon, LogoIcon } from './Icons';
 
 interface SidebarProps {
   notebooks: Notebook[];
@@ -32,7 +32,12 @@ const Sidebar: React.FC<SidebarProps> = ({
     <div className="w-20 md:w-80 h-full bg-surfaceContainer flex flex-col border-r border-outline/10 transition-all duration-300">
       <div className="p-6 flex items-center gap-3 text-onPrimaryContainer">
         <MenuIcon className="md:hidden" />
-        <h1 className="hidden md:block text-2xl font-bold tracking-tight text-primary">NoteGenius</h1>
+        <div className="hidden md:flex items-center gap-2">
+            <div className="bg-primary text-white p-1 rounded-lg">
+                <LogoIcon className="w-6 h-6" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-primary">NoteGenius</h1>
+        </div>
       </div>
 
       {/* Search */}
