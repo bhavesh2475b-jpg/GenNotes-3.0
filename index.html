@@ -39,19 +39,49 @@
       }
     </script>
     <style>
-      html, body, #root {
+      html, body {
         height: 100%;
         width: 100%;
         margin: 0;
         padding: 0;
-      }
-      body {
         background-color: #1E1E1E; /* Dark theme default */
         overflow: hidden;
         touch-action: none;
         overscroll-behavior: none;
         -webkit-user-select: none;
         user-select: none;
+      }
+      #root {
+        height: 100%;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+      /* Loading Spinner */
+      #app-loading {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #1E1E1E;
+        color: white;
+        z-index: 9999;
+        font-family: sans-serif;
+        transition: opacity 0.5s ease;
+      }
+      /* Error Display for Mobile Debugging */
+      #error-display {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        background: rgba(220, 38, 38, 0.9);
+        color: white;
+        padding: 20px;
+        z-index: 10000;
+        font-family: monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
       }
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
@@ -81,6 +111,38 @@
 </script>
 </head>
   <body>
+    <div id="error-display"></div>
+    <div id="app-loading">
+       <div class="flex flex-col items-center gap-4">
+         <img src="https://img.icons8.com/fluency/96/spiral-bound-booklet.png" width="64" height="64" alt="Logo" />
+         <span class="animate-pulse text-lg font-medium">Loading GenNotes...</span>
+       </div>
+    </div>
     <div id="root"></div>
+    
+    <script>
+      // Global error handler to show errors on screen (vital for mobile debugging)
+      window.onerror = function(msg, url, line, col, error) {
+        var display = document.getElementById('error-display');
+        if (display) {
+            display.style.display = 'block';
+            display.innerText = "ERROR: " + msg + "\n" + (url || '') + ":" + (line || '') + "\n" + (error ? error.stack : '');
+        }
+        return false;
+      };
+      // Remove loading screen when root is populated
+      const observer = new MutationObserver((mutations) => {
+        if (document.getElementById('root').childElementCount > 0) {
+           const loader = document.getElementById('app-loading');
+           if(loader) {
+               loader.style.opacity = '0';
+               setTimeout(() => loader.remove(), 500);
+           }
+           observer.disconnect();
+        }
+      });
+      observer.observe(document.getElementById('root'), { childList: true });
+    </script>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
