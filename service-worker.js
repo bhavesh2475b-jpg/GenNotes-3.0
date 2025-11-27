@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'gennotes-v4-spa-fallback';
+const CACHE_NAME = 'gennotes-v5-spa-fix';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -33,21 +33,31 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const request = event.request;
 
-  // For Navigation requests (Page loads), always serve index.html (SPA strategy)
+  // For Navigation requests (Page loads), serve index.html
+  // This covers SPA routing and fixes 404s if the server fails
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
+        .then((response) => {
+          // If server returns 404 (Not Found), fallback to index.html
+          if (!response || response.status === 404) {
+             return caches.match('/index.html');
+          }
+          return response;
+        })
         .catch(() => {
+          // If offline, fallback to index.html
           return caches.match('/index.html');
         })
     );
     return;
   }
 
-  // For other resources, Network First
+  // For other resources (images, scripts), use Network First strategy
   event.respondWith(
     fetch(request)
       .then((networkResponse) => {
+        // Cache valid responses
         if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
              const responseToCache = networkResponse.clone();
              caches.open(CACHE_NAME).then((cache) => {
@@ -57,6 +67,7 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       })
       .catch(() => {
+        // Fallback to cache if offline
         return caches.match(request);
       })
   );
