@@ -3,17 +3,34 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-const rootElement = document.getElementById('root');
-if (!rootElement) {
-  throw new Error("Could not find root element to mount to");
-}
+const mountApp = () => {
+    try {
+        const rootElement = document.getElementById('root');
+        if (!rootElement) {
+            throw new Error("Could not find root element to mount to");
+        }
+        
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(
+            <React.StrictMode>
+                <App />
+            </React.StrictMode>
+        );
+    } catch (error: any) {
+        console.error("Mount Error:", error);
+        const display = document.getElementById('error-display');
+        if(display) {
+            display.style.display = 'block';
+            display.innerText = "MOUNT ERROR: " + error.message;
+        }
+    }
+};
 
-const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mountApp);
+} else {
+    mountApp();
+}
 
 // Register Service Worker for PWA support
 if ('serviceWorker' in navigator) {
