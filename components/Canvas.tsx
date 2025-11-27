@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
-import { ToolType, Stroke, Point, CanvasElement, TextElement, PageTemplate, ShapeType, CanvasHandle, StickyNoteElement, StrokeStyle, StrokeCap, PenType } from '../types';
-import { CopyIcon, TrashIcon, SelectIcon, CutIcon, AddIcon } from './Icons';
+import { ToolType, Stroke, Point, CanvasElement, TextElement, PageTemplate, ShapeType, CanvasHandle, StickyNoteElement, StrokeStyle, StrokeCap, PenType, ImageElement } from '../types';
+import { CopyIcon, TrashIcon, SelectIcon, CutIcon, AddIcon, BringToFrontIcon, SendToBackIcon } from './Icons';
 
 interface CanvasProps {
   elements: CanvasElement[];
@@ -26,6 +26,9 @@ interface CanvasProps {
   onPan?: (dx: number, dy: number) => void;
   penType?: PenType;
   penStability?: number;
+  // Infinite Canvas Props
+  isInfinite?: boolean;
+  panOffset?: { x: number, y: number };
 }
 
 const getBoundingBox = (elements: CanvasElement[]) => {
@@ -55,6 +58,11 @@ const getBoundingBox = (elements: CanvasElement[]) => {
             minY = Math.min(minY, el.y);
             maxX = Math.max(maxX, el.x + el.width);
             maxY = Math.max(maxY, el.y + el.height);
+        } else if (el.type === 'image') {
+            minX = Math.min(minX, el.x);
+            minY = Math.min(minY, el.y);
+            maxX = Math.max(maxX, el.x + el.width);
+            maxY = Math.max(maxY, el.y + el.height);
         }
     });
 
@@ -67,6 +75,8 @@ const getElementCenter = (el: CanvasElement): Point => {
         const height = el.fontSize;
         return { x: el.x + width / 2, y: el.y - height / 2 };
     } else if (el.type === 'sticky-note') {
+        return { x: el.x + el.width / 2, y: el.y + el.height / 2 };
+    } else if (el.type === 'image') {
         return { x: el.x + el.width / 2, y: el.y + el.height / 2 };
     } else {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -274,11 +284,15 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
   shapeCap,
   onPan,
   penType = 'fountain',
-  penStability = 0.2
+  penStability = 0.2,
+  isInfinite = false,
+  panOffset = { x: 0, y: 0 }
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const activePointerId = useRef<number | null>(null);
+  const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Pinch Zoom Logic & Panning
   const activePointers = useRef<Map<number, {x: number, y: number}>>(new Map());
@@ -312,8 +326,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Dimensions
-  const pageWidth = orientation === 'landscape' ? 1123 : 794;
-  const pageHeight = orientation === 'landscape' ? 794 : 1123;
+  const pageWidth = isInfinite ? window.innerWidth : (orientation === 'landscape' ? 1123 : 794);
+  const pageHeight = isInfinite ? window.innerHeight : (orientation === 'landscape' ? 794 : 1123);
 
   useImperativeHandle(ref, () => ({
       getSnapshot: () => {
@@ -324,14 +338,34 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
       }
   }));
 
+  // Keyboard Shortcuts for Deletion
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+         if (readOnly) return;
+         if (e.key === 'Delete' || e.key === 'Backspace') {
+             if (selectedIds.size > 0) {
+                 handleDeleteSelected();
+             }
+         }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIds, readOnly, elements]); // Added elements dep to ensure fresh state
+
   const getCoords = (e: React.PointerEvent<HTMLCanvasElement>): Point => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
     
-    // Calculate simulated pressure based on velocity
     const now = Date.now();
-    const x = (e.clientX - rect.left) / zoom;
-    const y = (e.clientY - rect.top) / zoom;
+    // Adjusted calculation for infinite canvas: subtract panOffset to get world coordinates
+    let x = (e.clientX - rect.left) / zoom;
+    let y = (e.clientY - rect.top) / zoom;
+    
+    if (isInfinite) {
+        x = (e.clientX - rect.left - panOffset.x) / zoom;
+        y = (e.clientY - rect.top - panOffset.y) / zoom;
+    }
+
     let pressure = e.pressure !== 0.5 && e.pressure !== 0 ? e.pressure : 0.5;
 
     if (lastScreenPointRef.current && lastTimeRef.current) {
@@ -368,7 +402,19 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
           bg = (template === 'legal') ? '#FFF9C4' : isTemplateDark ? '#111111' : '#FDFBF7';
       }
       ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, width, height);
+      
+      if (isInfinite) {
+          // Fill the visible area by using the inverse of translate
+          // But since we are already translated, drawing from -Infinity to Infinity effectively
+          // is achieved by filling the view relative to the pan
+          const viewL = -panOffset.x / zoom;
+          const viewT = -panOffset.y / zoom;
+          const viewW = width / zoom;
+          const viewH = height / zoom;
+          ctx.fillRect(viewL, viewT, viewW, viewH);
+      } else {
+          ctx.fillRect(0, 0, width, height);
+      }
 
       // Line Color Logic
       let isBgDark = isTemplateDark;
@@ -396,133 +442,149 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
            ctx.beginPath();
            ctx.strokeStyle = color;
            ctx.lineWidth = 1;
-           for (let x = spacing; x < width; x += spacing) { ctx.moveTo(x, 0); ctx.lineTo(x, height); }
-           for (let y = spacing; y < height; y += spacing) { ctx.moveTo(0, y); ctx.lineTo(width, y); }
+           
+           if (isInfinite) {
+               const startX = Math.floor((-panOffset.x / zoom) / spacing) * spacing;
+               const endX = startX + (width / zoom) + spacing;
+               const startY = Math.floor((-panOffset.y / zoom) / spacing) * spacing;
+               const endY = startY + (height / zoom) + spacing;
+               
+               for (let x = startX; x < endX; x += spacing) { ctx.moveTo(x, startY); ctx.lineTo(x, endY); }
+               for (let y = startY; y < endY; y += spacing) { ctx.moveTo(startX, y); ctx.lineTo(endX, y); }
+           } else {
+               for (let x = spacing; x < width; x += spacing) { ctx.moveTo(x, 0); ctx.lineTo(x, height); }
+               for (let y = spacing; y < height; y += spacing) { ctx.moveTo(0, y); ctx.lineTo(width, y); }
+           }
            ctx.stroke();
       };
+      
+      const drawDots = (spacing: number, color: string) => {
+           ctx.fillStyle = color;
+           if (isInfinite) {
+               const startX = Math.floor((-panOffset.x / zoom) / spacing) * spacing;
+               const endX = startX + (width / zoom) + spacing;
+               const startY = Math.floor((-panOffset.y / zoom) / spacing) * spacing;
+               const endY = startY + (height / zoom) + spacing;
+               
+               for (let x = startX; x < endX; x += spacing) {
+                   for (let y = startY; y < endY; y += spacing) {
+                       ctx.beginPath();
+                       ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+                       ctx.fill();
+                   }
+               }
+           } else {
+               for (let x = spacing; x < width; x += spacing) {
+                   for (let y = spacing; y < height; y += spacing) {
+                       ctx.beginPath();
+                       ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+                       ctx.fill();
+                   }
+               }
+           }
+      };
 
-      if (template === 'ruled-narrow') {
+      if (template === 'ruled-narrow' && !isInfinite) {
           const lineHeight = 25;
           for (let y = 100; y < height; y += lineHeight) drawLine(0, y, width, y, lineColor, 1);
           drawLine(80, 0, 80, height, marginColor, 1.5);
-      } else if (template === 'ruled-wide') {
+      } else if (template === 'ruled-wide' && !isInfinite) {
           const lineHeight = 35;
           for (let y = 100; y < height; y += lineHeight) drawLine(0, y, width, y, lineColor, 1);
           drawLine(80, 0, 80, height, marginColor, 1.5);
       } else if (template === 'squared') {
            drawGrid(35, strongLineColor);
       } else if (template === 'dotted') {
-           const spacing = 35;
-           ctx.fillStyle = strongLineColor;
-           for (let x = spacing; x < width; x += spacing) {
-               for (let y = spacing; y < height; y += spacing) {
-                   ctx.beginPath();
-                   ctx.arc(x, y, 1.5, 0, Math.PI * 2);
-                   ctx.fill();
-               }
-           }
-      } else if (template === 'cornell') {
+           drawDots(35, strongLineColor);
+      } else if (template === 'cornell' && !isInfinite) {
           const headerHeight = 100;
           const cueWidth = 240;
           const footerHeight = 120;
-          
-          // Rows
           const lineHeight = 30;
           for (let y = headerHeight + lineHeight; y < height - footerHeight; y += lineHeight) {
               drawLine(cueWidth, y, width, y, lineColor, 1);
           }
-          
-          // Structure
-          drawLine(0, headerHeight, width, headerHeight, strongLineColor, 1.5); // Header Divider
-          drawLine(cueWidth, headerHeight, cueWidth, height - footerHeight, strongLineColor, 1.5); // Cue Divider
-          drawLine(0, height - footerHeight, width, height - footerHeight, strongLineColor, 1.5); // Footer Divider
-          
+          drawLine(0, headerHeight, width, headerHeight, strongLineColor, 1.5);
+          drawLine(cueWidth, headerHeight, cueWidth, height - footerHeight, strongLineColor, 1.5);
+          drawLine(0, height - footerHeight, width, height - footerHeight, strongLineColor, 1.5);
           ctx.fillStyle = isBgDark ? '#CCC' : '#666';
           ctx.font = '14px sans-serif';
           ctx.fillText("Topic / Objective:", 20, 40);
           ctx.fillText("Name / Date:", width - 200, 40);
           ctx.fillText("Cues", 20, headerHeight + 30);
           ctx.fillText("Summary", 20, height - footerHeight + 30);
-      } else if (template === 'legal') {
+      } else if (template === 'legal' && !isInfinite) {
           const lineHeight = 30;
           for (let y = 100; y < height; y += lineHeight) drawLine(0, y, width, y, blueLine, 1);
-          drawLine(100, 0, 100, height, marginColor, 1.5); // Left margin
-          drawLine(110, 0, 110, height, marginColor, 1.5); // Double line margin
-      } else if (template === 'two-column') {
+          drawLine(100, 0, 100, height, marginColor, 1.5);
+          drawLine(110, 0, 110, height, marginColor, 1.5);
+      } else if (template === 'two-column' && !isInfinite) {
           const lineHeight = 30;
           const colW = width / 2;
-          for (let y = 100; y < height; y += lineHeight) {
-              drawLine(0, y, width, y, lineColor, 1);
-          }
+          for (let y = 100; y < height; y += lineHeight) drawLine(0, y, width, y, lineColor, 1);
           drawLine(colW, 0, colW, height, strongLineColor, 1);
-      } else if (template === 'three-column') {
+      } else if (template === 'three-column' && !isInfinite) {
           const lineHeight = 30;
           const colW = width / 3;
-          for (let y = 100; y < height; y += lineHeight) {
-              drawLine(0, y, width, y, lineColor, 1);
-          }
+          for (let y = 100; y < height; y += lineHeight) drawLine(0, y, width, y, lineColor, 1);
           drawLine(colW, 0, colW, height, strongLineColor, 1);
           drawLine(colW*2, 0, colW*2, height, strongLineColor, 1);
       } else if (template === 'music-paper' || template === 'guitar-score') {
-           const staffGap = 15;
-           const staffSpace = 80;
-           ctx.strokeStyle = strongLineColor;
-           ctx.lineWidth = 1;
-           for (let y = 100; y < height - 50; y += staffSpace) {
-               for(let i=0; i<5; i++) {
-                   const ly = y + i * staffGap;
-                   ctx.beginPath();
-                   ctx.moveTo(50, ly);
-                   ctx.lineTo(width - 50, ly);
-                   ctx.stroke();
+           if (!isInfinite) {
+               const staffGap = 15;
+               const staffSpace = 80;
+               ctx.strokeStyle = strongLineColor;
+               ctx.lineWidth = 1;
+               for (let y = 100; y < height - 50; y += staffSpace) {
+                   for(let i=0; i<5; i++) {
+                       const ly = y + i * staffGap;
+                       ctx.beginPath();
+                       ctx.moveTo(50, ly);
+                       ctx.lineTo(width - 50, ly);
+                       ctx.stroke();
+                   }
                }
+           } else {
+               drawGrid(35, lineColor); // Fallback for infinite
            }
       } else if (template === 'isometric') {
-          // Equilateral triangles
-          const size = 30;
-          const h = size * Math.sin(Math.PI / 3);
-          ctx.strokeStyle = lineColor;
+          // Simplification for infinite canvas: use a grid or skip complex patterns for performance
+          if (isInfinite) {
+              drawGrid(30, lineColor); 
+          } else {
+              const size = 30;
+              const h = size * Math.sin(Math.PI / 3);
+              ctx.strokeStyle = lineColor;
+              ctx.beginPath();
+              for (let y = 0; y < height; y += h) { ctx.moveTo(0, y); ctx.lineTo(width, y); }
+              for (let x = -height; x < width; x += size) { ctx.moveTo(x, 0); ctx.lineTo(x + height / Math.tan(Math.PI/3), height); }
+              for (let x = 0; x < width + height; x += size) { ctx.moveTo(x, 0); ctx.lineTo(x - height / Math.tan(Math.PI/3), height); }
+              ctx.stroke();
+          }
+      } else if (template === 'hexagonal') {
+          drawGrid(30, lineColor); // Fallback
+      }
+      
+      // Default fallback for infinite canvas if template is page-specific
+      if (isInfinite && (template === 'ruled-narrow' || template === 'ruled-wide' || template === 'cornell' || template === 'legal' || template === 'two-column' || template === 'three-column')) {
+          const lineHeight = template === 'ruled-wide' ? 35 : 25;
           ctx.beginPath();
-          for (let y = 0; y < height; y += h) {
-              ctx.moveTo(0, y);
-              ctx.lineTo(width, y);
-          }
-          // Diagonals 60 deg
-          for (let x = -height; x < width; x += size) {
-               ctx.moveTo(x, 0);
-               ctx.lineTo(x + height / Math.tan(Math.PI/3), height);
-          }
-          // Diagonals 120 deg
-          for (let x = 0; x < width + height; x += size) {
-              ctx.moveTo(x, 0);
-              ctx.lineTo(x - height / Math.tan(Math.PI/3), height);
+          ctx.strokeStyle = lineColor;
+          ctx.lineWidth = 1;
+          
+          const startY = Math.floor((-panOffset.y / zoom) / lineHeight) * lineHeight;
+          const endY = startY + (height / zoom) + lineHeight;
+          const startX = -panOffset.x / zoom;
+          const endX = startX + width / zoom;
+          
+          for (let y = startY; y < endY; y += lineHeight) {
+              ctx.moveTo(startX, y);
+              ctx.lineTo(endX, y);
           }
           ctx.stroke();
-      } else if (template === 'hexagonal') {
-          const side = 20;
-          const h = Math.sin(Math.PI / 3) * side;
-          const r = Math.cos(Math.PI / 3) * side;
-          const hexW = 2 * r + side;
-          const hexH = 2 * h;
-          
-          ctx.strokeStyle = strongLineColor;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          
-          for (let y = 0; y < height + hexH; y += h) {
-             const offset = (Math.floor(y / h) % 2) * (r + side/2);
-             for (let x = -hexW; x < width + hexW; x += 3 * side) {
-                 // Simplified grid approximation for pattern
-                 // Drawing hexagons point to point
-                 // A true hex grid loop is complex, simpler visualization:
-                 // draw hex at x,y
-             }
-          }
-          // Alternate easier drawing: Honeycomb pattern
-          // Skip complex math for brevity, assume simple grid
-          drawGrid(30, lineColor);
       }
-  }, [template, paperColor]);
+
+  }, [template, paperColor, isInfinite, panOffset, zoom]);
 
   const render = useCallback(() => {
     const canvas = canvasRef.current;
@@ -534,9 +596,28 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     ctx.save();
-    ctx.scale(zoom, zoom);
-
-    drawBackground(ctx, pageWidth, pageHeight);
+    
+    if (isInfinite) {
+        // For infinite canvas:
+        // 1. Draw background full screen
+        // 2. Translate context by panOffset
+        // 3. Scale by zoom
+        // Note: drawBackground handles its own fill relative to the view
+    } else {
+        // For standard notebook page:
+        // Scale first for zoom
+        ctx.scale(zoom, zoom);
+    }
+    
+    // Draw background is slightly different for infinite
+    // We pass the screen dimensions for infinite
+    if (isInfinite) {
+        drawBackground(ctx, canvas.width, canvas.height);
+        ctx.translate(panOffset.x, panOffset.y);
+        ctx.scale(zoom, zoom);
+    } else {
+        drawBackground(ctx, pageWidth, pageHeight);
+    }
 
     const drawVariableWidthStroke = (stroke: Stroke) => {
         if (stroke.points.length < 2) return;
@@ -728,6 +809,21 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
           ctx.textBaseline = 'top';
           wrapText(ctx, el.content, el.x + 10, el.y + 10, el.width - 20, el.fontSize * 1.2);
           ctx.restore();
+      } else if (el.type === 'image') {
+          const img = imageCache.current.get(el.id);
+          if (img && img.complete) {
+              ctx.drawImage(img, el.x, el.y, el.width, el.height);
+              if (isSelected) {
+                  ctx.strokeStyle = '#6750A4';
+                  ctx.lineWidth = 2;
+                  ctx.strokeRect(el.x, el.y, el.width, el.height);
+              }
+          } else if (!img) {
+              const newImg = new Image();
+              newImg.src = el.data;
+              newImg.onload = () => { render(); };
+              imageCache.current.set(el.id, newImg);
+          }
       }
     });
 
@@ -738,6 +834,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
     if (tool === ToolType.ERASER && cursorPos && !readOnly) {
         const radius = (width * 6) / 2;
         ctx.beginPath();
+        // Adjust cursor pos for infinite canvas is mostly handled by getCoords state update
+        // but render logic needs to consider if we are in infinite mode, cursor pos is already in world coords
         ctx.arc(cursorPos.x, cursorPos.y, radius, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
         ctx.fill();
@@ -808,7 +906,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
     }
 
     ctx.restore();
-  }, [elements, currentStroke, zoom, tool, width, cursorPos, selectionBox, selectedIds, isDragging, dragElementsSnapshot, template, lassoPath, drawBackground, readOnly, shapeType, isShapeFilled, orientation, pageWidth, pageHeight, paperColor, drawToConvert, shapeStyle, shapeCap, penType]);
+  }, [elements, currentStroke, zoom, tool, width, cursorPos, selectionBox, selectedIds, isDragging, dragElementsSnapshot, template, lassoPath, drawBackground, readOnly, shapeType, isShapeFilled, orientation, pageWidth, pageHeight, paperColor, drawToConvert, shapeStyle, shapeCap, penType, isInfinite, panOffset]);
 
   useEffect(() => {
     let animationFrameId: number;
@@ -917,6 +1015,9 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
                 if (el.type === 'sticky-note') {
                      return point.x >= el.x && point.x <= el.x + el.width && point.y >= el.y && point.y <= el.y + el.height;
                 }
+                if (el.type === 'image') {
+                     return point.x >= el.x && point.x <= el.x + el.width && point.y >= el.y && point.y <= el.y + el.height;
+                }
                 return false;
             });
             
@@ -932,7 +1033,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
             return;
         }
 
-        if (tool !== ToolType.TEXT && tool !== ToolType.STICKY_NOTE) {
+        if (tool !== ToolType.TEXT && tool !== ToolType.STICKY_NOTE && tool !== ToolType.IMAGE) {
             setIsDrawing(true);
             setCurrentStroke({
                 id: crypto.randomUUID(),
@@ -972,7 +1073,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
             const currentCenter = { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 };
             const dx = currentCenter.x - initialPanCenter.current.x;
             const dy = currentCenter.y - initialPanCenter.current.y;
-            onPan(dx, dy); // Pass natural scrolling delta
+            onPan(dx, dy); 
             initialPanCenter.current = currentCenter;
         }
         return;
@@ -1028,6 +1129,10 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
                       const newX = pivot.x + (el.x - pivot.x) * Math.abs(scaleX);
                       const newY = pivot.y + (el.y - pivot.y) * Math.abs(scaleY);
                       return { ...el, x: newX, y: newY, width: el.width * Math.abs(scaleX), height: el.height * Math.abs(scaleY), fontSize: el.fontSize * Math.abs(scaleY) }
+                 } else if (el.type === 'image') {
+                      const newX = pivot.x + (el.x - pivot.x) * Math.abs(scaleX);
+                      const newY = pivot.y + (el.y - pivot.y) * Math.abs(scaleY);
+                      return { ...el, x: newX, y: newY, width: el.width * Math.abs(scaleX), height: el.height * Math.abs(scaleY) };
                  }
                  return el;
              });
@@ -1041,7 +1146,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
             const dy = point.y - dragStartPos.y;
             const newElements = dragElementsSnapshot.map(el => {
                 if (el.type === 'stroke') return { ...el, points: el.points.map(p => ({ x: p.x + dx, y: p.y + dy, pressure: p.pressure })) };
-                if (el.type === 'text' || el.type === 'sticky-note') return { ...el, x: el.x + dx, y: el.y + dy };
+                if (el.type === 'text' || el.type === 'sticky-note' || el.type === 'image') return { ...el, x: el.x + dx, y: el.y + dy };
                 return el;
             });
             setDragElementsSnapshot(newElements);
@@ -1083,12 +1188,9 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
         const newSelectedIds = new Set<string>();
         elements.forEach(el => {
             if (el.type === 'stroke') {
-                // Better Freeform selection: Check if ANY point of the stroke is inside the polygon
-                // Sampling every 5th point for performance is usually sufficient
                 const isInside = el.points.some((p, i) => i % 5 === 0 && isPointInPolygon(p, polygon));
                 if (isInside) newSelectedIds.add(el.id);
-            } else if (el.type === 'sticky-note') {
-                // Check corners for sticky notes
+            } else if (el.type === 'sticky-note' || el.type === 'image') {
                 const corners = [
                     { x: el.x, y: el.y },
                     { x: el.x + el.width, y: el.y },
@@ -1146,7 +1248,6 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
     }
     
     if (tool === ToolType.PEN && currentStroke && !currentStroke.shapeType && currentStroke.points.length > 20) {
-        // Scribble to erase logic
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         let pathLen = 0;
         let totalTurningAngle = 0;
@@ -1195,7 +1296,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
                         if (getDistance(p, currentStroke.points[i]) < eraserRadius) return false;
                     }
                 }
-             } else if (el.type === 'sticky-note') {
+             } else if (el.type === 'sticky-note' || el.type === 'image') {
                  for(let i=0; i<currentStroke.points.length; i+=10) {
                      const p = currentStroke.points[i];
                      if(p.x >= el.x && p.x <= el.x + el.width && p.y >= el.y && p.y <= el.y + el.height) {
@@ -1229,11 +1330,43 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
      }
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file && cursorPos) {
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+              const dataUrl = evt.target?.result as string;
+              const img = new Image();
+              img.onload = () => {
+                   const aspect = img.width / img.height;
+                   let w = 300;
+                   let h = 300 / aspect;
+                   onElementsChange([...elements, {
+                       id: crypto.randomUUID(),
+                       type: 'image',
+                       x: cursorPos.x,
+                       y: cursorPos.y,
+                       width: w,
+                       height: h,
+                       data: dataUrl
+                   }]);
+              };
+              img.src = dataUrl;
+          };
+          reader.readAsDataURL(file);
+      }
+      // Reset input value to allow re-uploading same file if deleted
+      if (e.target) e.target.value = '';
+  };
+
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (readOnly) return;
-      const rect = canvasRef.current!.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / zoom;
-      const y = (e.clientY - rect.top) / zoom;
+      const point = getCoords(e as unknown as React.PointerEvent<HTMLCanvasElement>);
+      const x = point.x;
+      const y = point.y;
+      
+      // Update cursor position for image placement
+      setCursorPos(point);
 
       if (tool === ToolType.TEXT) {
           const text = prompt("Enter text:");
@@ -1256,6 +1389,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
                   fontSize: 16
               }]);
           }
+      } else if (tool === ToolType.IMAGE) {
+          fileInputRef.current?.click();
       }
   };
 
@@ -1289,31 +1424,43 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
       setShowLassoMenu(false);
   };
 
+  const handleBringToFront = () => {
+      const selected = elements.filter(el => selectedIds.has(el.id));
+      const unselected = elements.filter(el => !selectedIds.has(el.id));
+      onElementsChange([...unselected, ...selected]);
+      setShowLassoMenu(false);
+  };
+
+  const handleSendToBack = () => {
+      const selected = elements.filter(el => selectedIds.has(el.id));
+      const unselected = elements.filter(el => !selectedIds.has(el.id));
+      onElementsChange([...selected, ...unselected]);
+      setShowLassoMenu(false);
+  };
+
   const renderLassoMenu = () => {
       if (!showLassoMenu || selectedIds.size === 0) return null;
       const bounds = getBoundingBox(elements.filter(el => selectedIds.has(el.id)));
       if (!bounds) return null;
       
       const menuHeight = 44;
-      const menuWidth = 260; 
+      const menuWidth = 360; // Widened for new buttons
       
-      // Default Position
       let top = (bounds.minY * zoom) - 60;
       let left = (bounds.maxX * zoom) - (bounds.width * zoom / 2) - (menuWidth / 2);
+
+      // Adjust for infinite canvas pan
+      if (isInfinite) {
+          top = ((bounds.minY + panOffset.y) * zoom) - 60;
+          left = ((bounds.maxX + panOffset.x) * zoom) - (bounds.width * zoom / 2) - (menuWidth / 2);
+      }
       
-      const canvasW = pageWidth * zoom;
-      const canvasH = pageHeight * zoom;
-
-      if (top < 10) top = (bounds.maxY * zoom) + 10;
-      if (top + menuHeight > canvasH) top = canvasH - menuHeight - 10;
-
-      if (left < 10) left = 10;
-      if (left + menuWidth > canvasW) left = canvasW - menuWidth - 10;
+      if (top < 10) top = 10; 
 
       return (
           <div 
-            className="absolute bg-[#1C1C1E] rounded-xl shadow-xl flex items-center p-1 gap-1 animate-in fade-in zoom-in duration-200 z-50 border border-white/10"
-            style={{ left, top }}
+            className="fixed bg-[#1C1C1E] rounded-xl shadow-xl flex items-center p-1 gap-1 animate-in fade-in zoom-in duration-200 z-50 border border-white/10"
+            style={{ left: Math.max(10, left), top: Math.max(10, top) }} 
           >
               <button onClick={handleCutSelected} className="p-2 text-white hover:bg-white/10 rounded-lg flex flex-col items-center gap-1 min-w-[50px]">
                   <CutIcon className="w-5 h-5"/>
@@ -1330,6 +1477,15 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
                <button onClick={handleDeleteSelected} className="p-2 text-red-400 hover:bg-white/10 rounded-lg flex flex-col items-center gap-1 min-w-[50px]">
                   <TrashIcon className="w-5 h-5"/>
                   <span className="text-[9px]">Delete</span>
+              </button>
+              <div className="w-px h-6 bg-white/20 mx-1"></div>
+               <button onClick={handleBringToFront} className="p-2 text-white hover:bg-white/10 rounded-lg flex flex-col items-center gap-1 min-w-[50px]">
+                  <BringToFrontIcon className="w-5 h-5"/>
+                  <span className="text-[9px]">Front</span>
+              </button>
+               <button onClick={handleSendToBack} className="p-2 text-white hover:bg-white/10 rounded-lg flex flex-col items-center gap-1 min-w-[50px]">
+                  <SendToBackIcon className="w-5 h-5"/>
+                  <span className="text-[9px]">Back</span>
               </button>
               <div className="w-px h-6 bg-white/20 mx-1"></div>
               <button 
@@ -1357,6 +1513,13 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({
           onPointerLeave={() => { if (!isDrawing) setCursorPos(null); }}
           onClick={handleCanvasClick}
           style={{ transformOrigin: 'top left' }}
+        />
+        <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            accept="image/*" 
+            onChange={handleImageUpload} 
         />
         {renderLassoMenu()}
     </div>

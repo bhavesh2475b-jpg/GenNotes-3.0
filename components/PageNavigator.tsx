@@ -1,7 +1,6 @@
-
 import React, { useRef } from 'react';
 import { Page, PageTemplate } from '../types';
-import { AddIcon, TrashIcon, CloseIcon, GridIcon } from './Icons';
+import { AddIcon, TrashIcon, CloseIcon } from './Icons';
 
 interface PageNavigatorProps {
     pages: Page[];

@@ -56,8 +56,8 @@ const PaperThumbnail: React.FC<PaperThumbnailProps> = ({ template, label, isSele
     };
 
     const isPortrait = orientation === 'portrait';
-    const width = isPortrait ? 'w-24' : 'w-32';
-    const height = isPortrait ? 'h-32' : 'h-24';
+    const width = isPortrait ? 'w-16 md:w-24' : 'w-24 md:w-32';
+    const height = isPortrait ? 'h-24 md:h-32' : 'h-16 md:h-24';
     const style = getBgStyle();
 
     return (
@@ -73,7 +73,7 @@ const PaperThumbnail: React.FC<PaperThumbnailProps> = ({ template, label, isSele
                 {template.includes('column') && <div className="absolute inset-0 flex"><div className={`w-1/2 border-r ${paperColorMode === 'Dark Paper' ? 'border-white/10' : 'border-black/10'}`}></div></div>}
                 {template === 'letters' && 'Aa'}
             </div>
-            <span className={`text-[11px] text-center max-w-[100px] leading-tight truncate px-1 ${isSelected ? 'text-[#007AFF] font-medium' : 'text-gray-400 group-hover:text-white'}`}>
+            <span className={`text-[11px] text-center max-w-[80px] md:max-w-[100px] leading-tight truncate px-1 ${isSelected ? 'text-[#007AFF] font-medium' : 'text-gray-400 group-hover:text-white'}`}>
                 {label}
             </span>
         </div>
@@ -93,7 +93,7 @@ const CreateNotebookModal: React.FC<CreateNotebookModalProps> = ({ onClose, onCr
     const [selectedPaperColor, setSelectedPaperColor] = useState<PaperColor>('White Paper');
     const [isColorDropdownOpen, setIsColorDropdownOpen] = useState(false);
 
-    // Categories without hardcoded color filtering (we apply dynamic colors now)
+    // Categories
     const paperCategories = [
         {
             name: "Essentials",
@@ -195,54 +195,55 @@ const CreateNotebookModal: React.FC<CreateNotebookModalProps> = ({ onClose, onCr
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-[#1C1C1E] w-full max-w-6xl h-[85vh] rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden border border-white/10 text-white font-sans">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 md:p-4">
+            <div className="bg-[#1C1C1E] w-full md:w-[95vw] max-w-6xl h-[95dvh] md:h-[85vh] rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden border border-white/10 text-white font-sans transition-all">
                 
                 {/* LEFT PREVIEW SIDEBAR */}
-                <div className="w-full md:w-[320px] bg-[#121212] p-6 flex flex-col border-r border-white/10 shrink-0 overflow-y-auto">
+                {/* Mobile: Compact height (max 35% of screen). Desktop: Full height sidebar */}
+                <div className="w-full md:w-[320px] bg-[#121212] p-4 md:p-6 flex flex-col gap-4 md:gap-6 border-b md:border-b-0 md:border-r border-white/10 shrink-0 overflow-y-auto max-h-[35vh] md:max-h-full">
                     
                     {/* Title */}
-                    <div className="mb-6">
+                    <div className="shrink-0">
                         <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2 block">Title</label>
                         <input 
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            className="w-full bg-[#2C2C2E] text-white rounded-lg px-4 py-3 border border-transparent focus:border-[#007AFF] focus:ring-1 focus:ring-[#007AFF] outline-none transition-all placeholder-gray-500"
+                            className="w-full bg-[#2C2C2E] text-white rounded-lg px-4 py-3 border border-transparent focus:border-[#007AFF] focus:ring-1 focus:ring-[#007AFF] outline-none transition-all placeholder-gray-500 text-sm md:text-base"
                             placeholder="Untitled Notebook"
                         />
                     </div>
 
-                    <div className="flex flex-col gap-6">
+                    <div className="flex flex-row md:flex-col gap-4 overflow-x-auto md:overflow-visible pb-2 md:pb-0">
                         {/* Cover Preview Section */}
                         <div 
-                            className={`group cursor-pointer rounded-xl p-4 transition-all ${activeTab === 'cover' ? 'bg-[#1C1C1E] ring-2 ring-[#007AFF]' : 'hover:bg-[#1C1C1E]'}`}
+                            className={`flex-1 min-w-[120px] group cursor-pointer rounded-xl p-3 md:p-4 transition-all ${activeTab === 'cover' ? 'bg-[#1C1C1E] ring-2 ring-[#007AFF]' : 'hover:bg-[#1C1C1E]'}`}
                             onClick={() => setActiveTab('cover')}
                         >
-                            <label className={`text-[10px] font-bold uppercase tracking-wider mb-4 block ${activeTab === 'cover' ? 'text-[#007AFF]' : 'text-gray-400'}`}>Cover</label>
-                            <div className="flex justify-center items-center py-4 bg-[#1C1C1E]/50 rounded-lg border border-white/5">
+                            <label className={`text-[10px] font-bold uppercase tracking-wider mb-2 md:mb-4 block ${activeTab === 'cover' ? 'text-[#007AFF]' : 'text-gray-400'}`}>Cover</label>
+                            <div className="flex justify-center items-center py-2 md:py-4 bg-[#1C1C1E]/50 rounded-lg border border-white/5 h-32 md:h-auto">
                                 <div 
                                     className="rounded-l-sm rounded-r-lg shadow-2xl relative transition-all duration-300" 
                                     style={{ 
                                         backgroundColor: selectedCover,
-                                        width: orientation === 'portrait' ? '120px' : '150px',
-                                        height: orientation === 'portrait' ? '150px' : '120px'
+                                        width: orientation === 'portrait' ? '80px' : '100px',
+                                        height: orientation === 'portrait' ? '100px' : '80px'
                                     }}
                                 >
                                      <div className="absolute left-[6%] top-0 bottom-0 w-[8%] bg-black/20 backdrop-blur-sm rounded-l-sm"></div>
                                 </div>
                             </div>
-                            <p className="text-center text-xs text-gray-400 mt-3 font-medium">
+                            <p className="text-center text-xs text-gray-400 mt-2 font-medium truncate">
                                 {coverCategories.flatMap(c => c.items).find(c => c.color === selectedCover)?.name || 'Solid Babyblue'}
                             </p>
                         </div>
 
                         {/* Paper Preview Section */}
                         <div 
-                            className={`group cursor-pointer rounded-xl p-4 transition-all ${activeTab === 'paper' ? 'bg-[#1C1C1E] ring-2 ring-[#007AFF]' : 'hover:bg-[#1C1C1E]'}`}
+                            className={`flex-1 min-w-[120px] group cursor-pointer rounded-xl p-3 md:p-4 transition-all ${activeTab === 'paper' ? 'bg-[#1C1C1E] ring-2 ring-[#007AFF]' : 'hover:bg-[#1C1C1E]'}`}
                             onClick={() => setActiveTab('paper')}
                         >
-                            <label className={`text-[10px] font-bold uppercase tracking-wider mb-4 block ${activeTab === 'paper' ? 'text-[#007AFF]' : 'text-gray-400'}`}>Paper</label>
-                            <div className="flex justify-center items-center py-4 bg-[#1C1C1E]/50 rounded-lg border border-white/5">
+                            <label className={`text-[10px] font-bold uppercase tracking-wider mb-2 md:mb-4 block ${activeTab === 'paper' ? 'text-[#007AFF]' : 'text-gray-400'}`}>Paper</label>
+                            <div className="flex justify-center items-center py-2 md:py-4 bg-[#1C1C1E]/50 rounded-lg border border-white/5 h-32 md:h-auto">
                                 <PaperThumbnail 
                                     template={selectedTemplate}
                                     label=""
@@ -252,87 +253,91 @@ const CreateNotebookModal: React.FC<CreateNotebookModalProps> = ({ onClose, onCr
                                     paperColorMode={selectedPaperColor === 'All Paper' ? 'White Paper' : selectedPaperColor}
                                 />
                             </div>
-                            <p className="text-center text-xs text-gray-400 mt-3 font-medium capitalize">{selectedTemplate.replace(/-/g, ' ')}</p>
+                            <p className="text-center text-xs text-gray-400 mt-2 font-medium capitalize truncate">{selectedTemplate.replace(/-/g, ' ')}</p>
                         </div>
                     </div>
                 </div>
 
                 {/* RIGHT CONTENT SELECTION */}
-                <div className="flex-1 flex flex-col bg-[#1C1C1E] min-w-0">
+                <div className="flex-1 flex flex-col bg-[#1C1C1E] min-w-0 min-h-0">
                     
                     {/* Header: Dropdowns & Action Buttons */}
-                    <div className="h-16 border-b border-white/10 flex items-center px-6 gap-3 shrink-0 bg-[#1C1C1E] z-20">
+                    <div className="h-auto min-h-[64px] py-2 md:py-0 border-b border-white/10 flex flex-wrap md:flex-nowrap items-center px-4 md:px-6 gap-2 md:gap-3 shrink-0 bg-[#1C1C1E] z-20">
                          {/* Dropdowns */}
-                         <button className="flex items-center gap-2 bg-[#2C2C2E] px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 hover:text-white transition-colors border border-white/5">
-                             <span className="opacity-90">Goodnotes Standard</span>
-                             <ChevronDownIcon className="w-3 h-3 opacity-50" />
-                         </button>
-                         
-                         {/* Paper Color Dropdown */}
-                         <div className="relative">
-                            <button 
-                                onClick={() => setIsColorDropdownOpen(!isColorDropdownOpen)}
-                                className="flex items-center gap-2 bg-[#2C2C2E] px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 hover:text-white transition-colors border border-white/5"
-                            >
-                                <span className="opacity-90">{selectedPaperColor}</span>
-                                <ChevronDownIcon className="w-3 h-3 opacity-50" />
-                            </button>
-                            {isColorDropdownOpen && (
-                                <div className="absolute top-full left-0 mt-1 w-40 bg-[#2C2C2E] border border-white/10 rounded-lg shadow-xl py-1 z-50">
-                                    {(['All Paper', 'White Paper', 'Dark Paper', 'Yellow Paper'] as PaperColor[]).map(color => (
-                                        <button 
-                                            key={color}
-                                            onClick={() => { setSelectedPaperColor(color); setIsColorDropdownOpen(false); }}
-                                            className="w-full text-left px-4 py-2 text-xs hover:bg-white/10 text-gray-200"
-                                        >
-                                            {color}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                         </div>
+                         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar max-w-full">
+                             <button className="flex items-center gap-2 bg-[#2C2C2E] px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 hover:text-white transition-colors border border-white/5 whitespace-nowrap">
+                                 <span className="opacity-90">Goodnotes Std</span>
+                                 <ChevronDownIcon className="w-3 h-3 opacity-50" />
+                             </button>
+                             
+                             {/* Paper Color Dropdown */}
+                             <div className="relative">
+                                <button 
+                                    onClick={() => setIsColorDropdownOpen(!isColorDropdownOpen)}
+                                    className="flex items-center gap-2 bg-[#2C2C2E] px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 hover:text-white transition-colors border border-white/5 whitespace-nowrap"
+                                >
+                                    <span className="opacity-90">{selectedPaperColor}</span>
+                                    <ChevronDownIcon className="w-3 h-3 opacity-50" />
+                                </button>
+                                {isColorDropdownOpen && (
+                                    <div className="absolute top-full left-0 mt-1 w-40 bg-[#2C2C2E] border border-white/10 rounded-lg shadow-xl py-1 z-50">
+                                        {(['All Paper', 'White Paper', 'Dark Paper', 'Yellow Paper'] as PaperColor[]).map(color => (
+                                            <button 
+                                                key={color}
+                                                onClick={() => { setSelectedPaperColor(color); setIsColorDropdownOpen(false); }}
+                                                className="w-full text-left px-4 py-2 text-xs hover:bg-white/10 text-gray-200"
+                                            >
+                                                {color}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                             </div>
 
-                         {/* Orientation Toggles */}
-                         <div className="flex bg-[#2C2C2E] rounded-lg p-1 border border-white/5 ml-2">
-                             <button 
-                                onClick={() => setOrientation('portrait')}
-                                className={`p-1.5 rounded transition-colors ${orientation === 'portrait' ? 'bg-[#636366] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
-                                title="Portrait"
-                             >
-                                 <div className="w-3 h-4 border-2 border-current rounded-[1px]"></div>
-                             </button>
-                             <button 
-                                onClick={() => setOrientation('landscape')}
-                                className={`p-1.5 rounded transition-colors ${orientation === 'landscape' ? 'bg-[#636366] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
-                                title="Landscape"
-                             >
-                                 <div className="w-4 h-3 border-2 border-current rounded-[1px]"></div>
-                             </button>
+                             {/* Orientation Toggles */}
+                             <div className="flex bg-[#2C2C2E] rounded-lg p-1 border border-white/5 ml-2 shrink-0">
+                                 <button 
+                                    onClick={() => setOrientation('portrait')}
+                                    className={`p-1.5 rounded transition-colors ${orientation === 'portrait' ? 'bg-[#636366] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
+                                    title="Portrait"
+                                 >
+                                     <div className="w-3 h-4 border-2 border-current rounded-[1px]"></div>
+                                 </button>
+                                 <button 
+                                    onClick={() => setOrientation('landscape')}
+                                    className={`p-1.5 rounded transition-colors ${orientation === 'landscape' ? 'bg-[#636366] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
+                                    title="Landscape"
+                                 >
+                                     <div className="w-4 h-3 border-2 border-current rounded-[1px]"></div>
+                                 </button>
+                             </div>
                          </div>
 
                          <div className="flex-1"></div>
 
-                         {/* Action Buttons - Moved to Top Right */}
-                         <button 
-                            onClick={onClose}
-                            className="px-4 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button 
-                            onClick={handleCreate}
-                            className="px-4 py-1.5 rounded-full text-xs font-bold bg-[#007AFF] hover:bg-[#0062CC] text-white transition-all shadow-lg shadow-blue-500/20 active:scale-95"
-                        >
-                            Create
-                        </button>
+                         {/* Action Buttons */}
+                         <div className="flex items-center gap-2 ml-auto">
+                            <button 
+                                onClick={onClose}
+                                className="px-4 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleCreate}
+                                className="px-4 py-1.5 rounded-full text-xs font-bold bg-[#007AFF] hover:bg-[#0062CC] text-white transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+                            >
+                                Create
+                            </button>
+                         </div>
 
                     </div>
 
-                    {/* Scrollable Content */}
-                    <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                    {/* Scrollable Content (Vertical Slider) */}
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent min-h-0">
                         
                         {activeTab === 'paper' && (
-                            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300 pb-20">
+                            <div className="space-y-6 md:space-y-8 animate-in fade-in slide-in-from-right-4 duration-300 pb-20">
                                 {paperCategories.map((category) => (
                                     <div key={category.name}>
                                         <div className="flex items-center justify-between mb-3 px-1">
@@ -342,7 +347,7 @@ const CreateNotebookModal: React.FC<CreateNotebookModalProps> = ({ onClose, onCr
                                             <button className="text-xs text-[#007AFF] hover:text-[#409CFF] font-medium transition-colors">See all</button>
                                         </div>
                                         
-                                        {/* Horizontal Slider */}
+                                        {/* Horizontal Slider within Category */}
                                         <div className="flex gap-4 overflow-x-auto pb-4 -mx-2 px-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent snap-x">
                                             {category.items.map((item) => (
                                                 <PaperThumbnail 
@@ -363,7 +368,7 @@ const CreateNotebookModal: React.FC<CreateNotebookModalProps> = ({ onClose, onCr
                         )}
 
                         {activeTab === 'cover' && (
-                            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300 pb-20">
+                            <div className="space-y-6 md:space-y-8 animate-in fade-in slide-in-from-right-4 duration-300 pb-20">
                                 {coverCategories.map((category) => (
                                     <div key={category.name}>
                                         <div className="flex items-center justify-between mb-3 px-1">
@@ -383,8 +388,8 @@ const CreateNotebookModal: React.FC<CreateNotebookModalProps> = ({ onClose, onCr
                                                         className={`rounded-l-sm rounded-r-lg shadow-sm relative transition-all duration-200 ${selectedCover === cover.color ? 'ring-2 ring-[#007AFF] ring-offset-2 ring-offset-[#1C1C1E] scale-105' : 'hover:ring-2 hover:ring-white/20'}`} 
                                                         style={{ 
                                                             backgroundColor: cover.color,
-                                                            width: orientation === 'portrait' ? '96px' : '120px',
-                                                            height: orientation === 'portrait' ? '120px' : '96px'
+                                                            width: orientation === 'portrait' ? '80px md:96px' : '100px md:120px',
+                                                            height: orientation === 'portrait' ? '100px md:120px' : '80px md:96px'
                                                         }}
                                                     >
                                                         <div className="absolute left-[6%] top-0 bottom-0 w-[8%] bg-black/10 rounded-l-sm backdrop-blur-sm"></div>

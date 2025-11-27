@@ -65,7 +65,17 @@ export interface StickyNoteElement {
   fontSize: number;
 }
 
-export type CanvasElement = Stroke | TextElement | StickyNoteElement;
+export interface ImageElement {
+  id: string;
+  type: 'image';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  data: string; // Base64 data URL
+}
+
+export type CanvasElement = Stroke | TextElement | StickyNoteElement | ImageElement;
 
 export type PageTemplate = 
   // Essentials

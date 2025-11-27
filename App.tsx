@@ -56,6 +56,9 @@ const App: React.FC = () => {
   const [zoom, setZoom] = useState(1);
   const [readOnly, setReadOnly] = useState(false);
   
+  // Infinite Canvas State
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+
   // Settings
   const [drawAndHoldEnabled, setDrawAndHoldEnabled] = useState(true);
   const [drawToConvert, setDrawToConvert] = useState(false);
@@ -100,6 +103,7 @@ const App: React.FC = () => {
   const currentNotebook = notebooks.find(n => n.id === currentNotebookId) || notebooks[0];
   const currentPage = currentNotebook.pages[currentPageIndex];
   const currentHistory = history[currentPage.id] || { past: [], future: [] };
+  const isWhiteboard = currentNotebook.type === 'whiteboard';
 
   useEffect(() => {
     const initCloud = async () => {
@@ -132,8 +136,9 @@ const App: React.FC = () => {
   useEffect(() => {
     if (activeMode === 'SELECT') setTool(ToolType.SELECT);
     else if (activeMode === 'TEXT') setTool(ToolType.TEXT);
+    else if (activeMode === 'IMAGE') setTool(ToolType.IMAGE);
     else if (activeMode === 'HANDWRITING') {
-        if (tool !== ToolType.PEN && tool !== ToolType.HIGHLIGHTER && tool !== ToolType.ERASER && tool !== ToolType.SHAPE && tool !== ToolType.LASSO) {
+        if (tool !== ToolType.PEN && tool !== ToolType.HIGHLIGHTER && tool !== ToolType.ERASER && tool !== ToolType.SHAPE && tool !== ToolType.LASSO && tool !== ToolType.STICKY_NOTE) {
             setTool(ToolType.PEN);
         }
     }
@@ -144,6 +149,7 @@ const App: React.FC = () => {
       setTool(newTool);
       if (newTool === ToolType.SELECT) setActiveMode('SELECT');
       else if (newTool === ToolType.TEXT) setActiveMode('TEXT');
+      else if (newTool === ToolType.IMAGE) setActiveMode('IMAGE');
       else setActiveMode('HANDWRITING');
   };
 
@@ -198,6 +204,24 @@ const App: React.FC = () => {
     handleUpdatePage(nextElements, currentPageIndex, false);
   }, [currentHistory, currentPage, currentPageIndex]);
 
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+        // Undo / Redo
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+            e.preventDefault();
+            if (e.shiftKey) handleRedo();
+            else handleUndo();
+        } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
+            e.preventDefault();
+            handleRedo();
+        }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
+
+
   // Handle detailed notebook creation from the modal
   const handleCreateNotebook = (title: string, coverColor: string, template: PageTemplate, orientation: 'portrait' | 'landscape', paperColor: string) => {
     const newNb = createNotebook(title, coverColor, 'notebook', template, orientation, paperColor);
@@ -207,7 +231,7 @@ const App: React.FC = () => {
     setIsCreateNotebookModalOpen(false);
     setCurrentView('WORKSPACE');
   };
-
+  
   const handleAddPage = async (template: PageTemplate, topic?: string) => {
       setIsNewPageModalOpen(false);
       let newPage = createPage(template);
@@ -243,7 +267,6 @@ const App: React.FC = () => {
           return nb;
       }));
       
-      // If we are in single view mode, jump to new page
       if (viewMode === 'single') {
          setTimeout(() => {
              const nb = notebooks.find(n => n.id === currentNotebookId);
@@ -282,7 +305,6 @@ const App: React.FC = () => {
           return nb;
       }));
 
-      // Update current page index if the active page was moved
       if (currentPageIndex === fromIndex) {
           setCurrentPageIndex(toIndex);
       } else if (currentPageIndex > fromIndex && currentPageIndex <= toIndex) {
@@ -298,7 +320,6 @@ const App: React.FC = () => {
 
   const handleCut = (elements: CanvasElement[]) => {
       handleCopy(elements);
-      // Remove elements from canvas
       const newElements = currentPage.elements.filter(el => !elements.some(cutEl => cutEl.id === el.id));
       handleUpdatePage(newElements, currentPageIndex);
   };
@@ -309,7 +330,6 @@ const App: React.FC = () => {
       const newElements = clipboard.map(el => ({
           ...el,
           id: crypto.randomUUID(),
-          // Offset pasted elements slightly so they don't overlap perfectly
           ...(el.type === 'stroke' ? { points: el.points.map(p => ({ ...p, x: p.x + 20, y: p.y + 20 })) } : { x: el.x + 20, y: el.y + 20 })
       }));
       
@@ -324,7 +344,6 @@ const App: React.FC = () => {
       setIsScanning(true);
       try {
           const transcription = await recognizeHandwriting(snapshot);
-          // Update the current page with transcription
           setNotebooks(prev => prev.map(nb => {
               if (nb.id === currentNotebookId) {
                   const newPages = [...nb.pages];
@@ -346,16 +365,20 @@ const App: React.FC = () => {
   };
   
   const handleZoomChange = (newZoom: number) => {
-      setZoom(Math.min(3, Math.max(0.5, newZoom)));
+      setZoom(Math.min(3, Math.max(0.2, newZoom)));
   };
 
   const handlePan = (dx: number, dy: number) => {
-      if (scrollContainerRef.current) {
-          if (scrollDirection === 'vertical' || scrollDirection === 'none') {
-             scrollContainerRef.current.scrollTop -= dy;
-          }
-          if (scrollDirection === 'horizontal' || scrollDirection === 'none') {
-             scrollContainerRef.current.scrollLeft -= dx;
+      if (isWhiteboard) {
+          setPanOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+      } else {
+          if (scrollContainerRef.current) {
+              if (scrollDirection === 'vertical' || scrollDirection === 'none') {
+                 scrollContainerRef.current.scrollTop -= dy;
+              }
+              if (scrollDirection === 'horizontal' || scrollDirection === 'none') {
+                 scrollContainerRef.current.scrollLeft -= dx;
+              }
           }
       }
   };
@@ -369,10 +392,14 @@ const App: React.FC = () => {
   }, [currentPage]);
 
   const handleOpenNotebook = (id: string) => {
-      setCurrentNotebookId(id);
-      setCurrentPageIndex(0);
-      setCurrentView('WORKSPACE');
-      setReadOnly(false);
+      const nb = notebooks.find(n => n.id === id);
+      if (nb) {
+          setCurrentNotebookId(id);
+          setCurrentPageIndex(0);
+          setCurrentView('WORKSPACE');
+          setReadOnly(false);
+          if (nb.type === 'whiteboard') setPanOffset({ x: 0, y: 0 });
+      }
   };
 
   if (currentView === 'HOME') {
@@ -393,8 +420,8 @@ const App: React.FC = () => {
       );
   }
 
-  // Calculate canvas margin based on docked toolbar
   const getCanvasMargin = () => {
+      if (isWhiteboard) return '';
       if (activeMode !== 'HANDWRITING' || readOnly) return '';
       if (toolbarPosition === 'top') return 'mt-[60px]';
       if (toolbarPosition === 'left') return 'ml-[72px]';
@@ -432,27 +459,27 @@ const App: React.FC = () => {
 
       <div className="flex flex-1 relative overflow-hidden">
         
-        {/* Page Navigator Sidebar */}
-        <PageNavigator 
-            pages={currentNotebook.pages}
-            currentPageIndex={currentPageIndex}
-            onSelectPage={(index) => { setCurrentPageIndex(index); }}
-            onAddPage={() => handleAddPage(defaultTemplate)}
-            onDeletePage={handleDeletePage}
-            onReorderPage={handleReorderPage}
-            isOpen={isPageNavOpen}
-            onClose={() => setIsPageNavOpen(false)}
-        />
+        {!isWhiteboard && (
+            <PageNavigator 
+                pages={currentNotebook.pages}
+                currentPageIndex={currentPageIndex}
+                onSelectPage={(index) => { setCurrentPageIndex(index); }}
+                onAddPage={() => handleAddPage(defaultTemplate)}
+                onDeletePage={handleDeletePage}
+                onReorderPage={handleReorderPage}
+                isOpen={isPageNavOpen}
+                onClose={() => setIsPageNavOpen(false)}
+            />
+        )}
 
         <div className="flex-1 relative bg-[#333333] overflow-hidden flex flex-col">
            
-           {/* Floating Undo/Redo Tabs + Paste */}
             <div className="absolute top-6 left-6 z-40 bg-[#1C1C1E]/90 backdrop-blur-md border border-white/10 rounded-lg shadow-lg flex items-center p-1 gap-1">
                 <button 
                     onClick={handleUndo} 
                     disabled={currentHistory.past.length === 0 || readOnly} 
                     className="p-2 text-white/90 hover:bg-white/10 rounded-lg disabled:opacity-40 transition-colors"
-                    title="Undo"
+                    title="Undo (Ctrl+Z)"
                 >
                     <UndoIcon className="w-5 h-5" />
                 </button>
@@ -461,12 +488,11 @@ const App: React.FC = () => {
                     onClick={handleRedo} 
                     disabled={currentHistory.future.length === 0 || readOnly} 
                     className="p-2 text-white/90 hover:bg-white/10 rounded-lg disabled:opacity-40 transition-colors"
-                    title="Redo"
+                    title="Redo (Ctrl+Y)"
                 >
                     <RedoIcon className="w-5 h-5" />
                 </button>
                 
-                {/* Paste Shortcut */}
                 {!readOnly && clipboard.length > 0 && (
                     <>
                     <div className="w-px h-5 bg-white/10"></div>
@@ -484,7 +510,9 @@ const App: React.FC = () => {
 
            <div 
              ref={scrollContainerRef}
-             className={`flex-1 overflow-auto flex relative p-4 md:p-8 touch-pan-x touch-pan-y ${getCanvasMargin()}`}
+             className={`flex-1 flex relative touch-pan-x touch-pan-y
+                 ${isWhiteboard ? 'overflow-hidden p-0' : `overflow-auto p-4 md:p-8 ${getCanvasMargin()}`}
+             `}
            >
                {(isGeneratingTemplate || isScanning) && (
                     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm rounded-sm pointer-events-none">
@@ -495,9 +523,10 @@ const App: React.FC = () => {
                     </div>
                 )}
                 
-                {/* Content Area */}
-                {viewMode === 'single' ? (
-                     <div className="m-auto relative shadow-2xl origin-top-left">
+                {viewMode === 'single' || isWhiteboard ? (
+                     <div className={`
+                         ${isWhiteboard ? 'w-full h-full' : 'm-auto relative shadow-2xl origin-top-left'}
+                     `}>
                         <Canvas 
                             ref={canvasRef}
                             elements={currentPage.elements}
@@ -522,6 +551,8 @@ const App: React.FC = () => {
                             penType={penType}
                             penStability={penStability[penType]}
                             readOnly={readOnly}
+                            isInfinite={isWhiteboard}
+                            panOffset={panOffset}
                         />
                     </div>
                 ) : (
@@ -532,10 +563,9 @@ const App: React.FC = () => {
                              <div 
                                 key={page.id} 
                                 className="relative shadow-2xl origin-top-left"
-                                onClick={() => setCurrentPageIndex(index)} // Click to make active
+                                onClick={() => setCurrentPageIndex(index)} 
                              >
                                 <Canvas 
-                                    // Use ref only for active page if needed, or null in continuous mode to avoid refs conflict
                                     ref={index === currentPageIndex ? canvasRef : null} 
                                     elements={page.elements}
                                     onElementsChange={(elements) => handleUpdatePage(elements, index)}
@@ -594,7 +624,7 @@ const App: React.FC = () => {
              setPenStability={setPenStability}
            />
 
-           {viewMode === 'single' && (
+           {viewMode === 'single' && !isWhiteboard && (
                <div className="absolute bottom-6 left-6 bg-[#1C1C1E] text-white/90 px-4 py-2 rounded-full shadow-lg text-sm font-medium z-40 backdrop-blur-md bg-opacity-90 flex items-center gap-2 border border-white/10">
                    <button 
                     disabled={currentPageIndex === 0}
@@ -614,7 +644,7 @@ const App: React.FC = () => {
                </div>
            )}
            
-           {viewMode === 'continuous' && (
+           {viewMode === 'continuous' && !isWhiteboard && (
                 <div className="absolute bottom-6 left-6 bg-[#1C1C1E] text-white/90 px-4 py-2 rounded-full shadow-lg text-sm font-medium z-40 backdrop-blur-md bg-opacity-90 border border-white/10">
                     <span>{currentNotebook.pages.length} Pages</span>
                 </div>
@@ -622,7 +652,7 @@ const App: React.FC = () => {
 
            <div className="absolute bottom-6 right-6 bg-[#1C1C1E] text-white/90 p-2 rounded-full shadow-lg flex items-center gap-3 z-40 backdrop-blur-md bg-opacity-90 border border-white/10">
               <button 
-                onClick={() => setZoom(z => Math.max(0.5, z - 0.1))} 
+                onClick={() => setZoom(z => Math.max(0.2, z - 0.1))} 
                 className="p-1 hover:bg-white/10 rounded-full transition-colors"
               >
                   <ZoomOutIcon className="w-5 h-5" />
